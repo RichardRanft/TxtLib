@@ -88,18 +88,54 @@ void CSpeechSynthesizer::SpeakText(const char* text, bool async = false)
 }
 
 // need to figure out how to do this specifically
-void CSpeechSynthesizer::SetVoice(std::string* name)
-{}
-
-// need to work out a way of listing all available voices.
-std::list<std::string*>* CSpeechSynthesizer::GetAvailableVoices()
+bool CSpeechSynthesizer::SetVoice(std::string* name)
 {
-	std::list<std::string*>* namelist = new std::list<std::string*>();
+	// if we're not initialized return false
+	if (!m_initialized)
+		return false;
+	bool result = false;
 
 	CComPtr<IEnumSpObjectTokens> cpIEnumeration;
 
-	// Enumerate voice tokens that speak US English in a female voice.
-	HRESULT hr = SpEnumTokens(SPCAT_VOICES, L"", L"", &cpIEnumeration);
+	// Enumerate voice tokens
+	HRESULT hr = SpEnumTokens(SPCAT_VOICES, L"Language", L"", &cpIEnumeration);
+	if (SUCCEEDED(hr))
+	{
+		unsigned long count = 0;
+		unsigned long fetched = 0;
+		cpIEnumeration->GetCount(&count);
+		for (unsigned long i = 0; i < count; i++)
+		{
+			CComPtr<ISpObjectToken> cpTokenObj;
+			hr = cpIEnumeration->Next(1, &cpTokenObj, &fetched);
+
+			wchar_t* desc = new wchar_t[256];
+			SpGetDescription(cpTokenObj, &desc);
+			char desctext[256] = { 0 };
+			wcstombs(desctext, desc, 256);
+			std::string* voiceName = new std::string(desctext);
+			if (strcmp(voiceName->c_str(), name->c_str()) == 0)
+			{
+				result = resetVoice(name);
+				break;
+			}
+		}
+	}
+
+	return result;
+}
+
+std::list<std::string*>* CSpeechSynthesizer::GetAvailableVoices()
+{
+	std::list<std::string*>* namelist = new std::list<std::string*>();
+	// if we're not initialized return an empty list
+	if (!m_initialized)
+		return namelist;
+
+	CComPtr<IEnumSpObjectTokens> cpIEnumeration;
+
+	// Enumerate voice tokens
+	HRESULT hr = SpEnumTokens(SPCAT_VOICES, L"Language", L"", &cpIEnumeration);
 	if (SUCCEEDED(hr))
 	{
 		unsigned long count = 0;
@@ -119,4 +155,58 @@ std::list<std::string*>* CSpeechSynthesizer::GetAvailableVoices()
 	}
 
 	return namelist;
+}
+
+bool CSpeechSynthesizer::resetVoice(std::string* name)
+{
+	cpVoice.Release();
+	cpToken.Release();
+	cpIEnum.Release();
+
+	CoInitialize(cpIEnum);
+
+	// Enumerate voice tokens that speak US English in a female voice.
+	HRESULT hr = SpEnumTokens(SPCAT_VOICES, L"Language", L"", &cpIEnum);
+
+	// Get the best matching token.
+	if (SUCCEEDED(hr))
+	{
+		unsigned long count = 0;
+		cpIEnum->GetCount(&count);
+		for (unsigned long i = 0; i < count; i++) 
+		{
+			if (cpToken != NULL)
+				cpToken.Release();
+			hr = cpIEnum->Next(1, &cpToken, NULL);
+
+			wchar_t* desc = new wchar_t[256];
+			SpGetDescription(cpToken, &desc);
+			char desctext[256] = { 0 };
+			wcstombs(desctext, desc, 256);
+			std::string* voiceName = new std::string(desctext);
+			if (strcmp(voiceName->c_str(), name->c_str()) == 0)
+			{
+				// Create a voice and set its token to the one we just found.
+				if (SUCCEEDED(hr))
+				{
+					hr = cpVoice.CoCreateInstance(CLSID_SpVoice);
+				}
+
+				// Set the voice.
+				if (SUCCEEDED(hr))
+				{
+					hr = cpVoice->SetVoice(cpToken);
+				}
+
+				// Set the output to the default audio device.
+				if (SUCCEEDED(hr))
+				{
+					hr = cpVoice->SetOutput(NULL, TRUE);
+				}
+				break;
+			}
+		}
+	}
+
+	return SUCCEEDED(hr);
 }

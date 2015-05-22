@@ -37,6 +37,7 @@ private:
 	CComPtr<ISpVoice> cpVoice;
 	bool m_initialized;
 #endif
+	bool resetVoice(std::string* name);
 public:
 	CSpeechSynthesizer();
 	~CSpeechSynthesizer();
@@ -47,7 +48,7 @@ public:
 
 	void SpeakText(const char* text, bool async);
 
-	void SetVoice(std::string* name);
+	bool SetVoice(std::string* name);
 
 	std::list<std::string*>* GetAvailableVoices();
 };

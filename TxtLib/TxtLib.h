@@ -12,8 +12,12 @@
 #include <sphelper.h>
 #include <string>
 #include <list>
+#include <map>
 #else
 #define TXTLIB_API __declspec(dllimport)
+#include <string>
+#include <list>
+#include <map>
 #include <tchar.h>
 #endif
 
@@ -37,6 +41,9 @@ private:
 	CComPtr<ISpVoice> cpVoice;
 	bool m_initialized;
 #endif
+	std::list<std::string*>* m_langList;
+	std::map<std::string*, std::string*>* m_voiceLangMap;
+
 	bool resetVoice(std::string* name);
 public:
 	CSpeechSynthesizer();
@@ -49,6 +56,8 @@ public:
 	void SpeakText(const char* text, bool async);
 
 	bool SetVoice(std::string* name);
+
+	std::string GetVoice();
 
 	std::list<std::string*>* GetAvailableVoices();
 };

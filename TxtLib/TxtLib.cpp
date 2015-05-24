@@ -28,13 +28,13 @@ CSpeechSynthesizer::CSpeechSynthesizer()
 
 CSpeechSynthesizer::~CSpeechSynthesizer()
 {
-	m_voiceLangMap->clear();
-	delete(m_voiceLangMap);
-	m_voiceLangMap = nullptr;
+	m_registryList->clear();
+	delete(m_registryList);
+	m_registryList = nullptr;
 
-	m_langList->clear();
-	delete(m_langList);
-	m_langList = nullptr;
+	m_tokenMap->clear();
+	delete(m_tokenMap);
+	m_tokenMap = nullptr;
 	
 	cpVoice.Release();
 	cpIEnum.Release();
@@ -49,35 +49,10 @@ bool CSpeechSynthesizer::IsInitialized()
 void CSpeechSynthesizer::Initialize()
 {
 	// Language=C09;Language=809;Language=409;Language=411;Language=412;Language=804;Language=C04;Language=404;
-	m_langList = new std::list < std::string* >();
-	m_langList->push_back(new std::string("Language=403"));		// Catalan Spain
-	m_langList->push_back(new std::string("Language=406"));		// Danish Denmark
-	m_langList->push_back(new std::string("Language=C07"));		// German Germany
-	m_langList->push_back(new std::string("Language=C09"));		// English Australia
-	m_langList->push_back(new std::string("Language=1009")); 	// English Canada
-	m_langList->push_back(new std::string("Language=809"));		// English Great Britain
-	m_langList->push_back(new std::string("Language=4009")); 	// English India
-	m_langList->push_back(new std::string("Language=409"));		// English United States
-	m_langList->push_back(new std::string("Language=2C0A")); 	// Spanish Spain
-	m_langList->push_back(new std::string("Language=80A"));		// Spanish Mexico
-	m_langList->push_back(new std::string("Language=40B"));		// Finnish Finland
-	m_langList->push_back(new std::string("Language=C0C"));		// French Canada
-	m_langList->push_back(new std::string("Language=40C"));		// French France
-	m_langList->push_back(new std::string("Language=410"));		// Italian Italy
-	m_langList->push_back(new std::string("Language=411"));		// Japanese Japan
-	m_langList->push_back(new std::string("Language=412"));		// Korean Korea
-	m_langList->push_back(new std::string("Language=414"));		// Norwegian Norway
-	m_langList->push_back(new std::string("Language=813"));		// Dutch Netherlands
-	m_langList->push_back(new std::string("Language=415"));		// Polish Poland
-	m_langList->push_back(new std::string("Language=416"));		// Portuguese Brazil
-	m_langList->push_back(new std::string("Language=816"));		// Portuguese Portugal
-	m_langList->push_back(new std::string("Language=419"));		// Russian Russia
-	m_langList->push_back(new std::string("Language=81D"));		// Swedish Sweden
-	m_langList->push_back(new std::string("Language=804"));		// Chinese China
-	m_langList->push_back(new std::string("Language=C04"));		// Chinese Hong Kong
-	m_langList->push_back(new std::string("Language=404"));		// Chinese Taiwan
+	m_tokenMap = new std::map<std::string*, std::string*>();
 
-	m_voiceLangMap = new std::map<std::string*, std::string*>();
+	m_registryList = new std::map<std::string*, std::string*>();
+	getVoicesInRegistry();
 
 	CoInitialize(cpIEnum);
 
@@ -119,10 +94,11 @@ void CSpeechSynthesizer::SpeakText(const char* text, bool async = false)
 		int size_needed = MultiByteToWideChar(CP_UTF8, 0, &text[0], (int)strlen(text), NULL, 0);
 		TCHAR wstrTo[1024] = { 0 };
 		MultiByteToWideChar(CP_UTF8, 0, &text[0], (int)strlen(text), &wstrTo[0], size_needed);
+		HRESULT hr;
 		if (async)
-			cpVoice->Speak(wstrTo, SPF_ASYNC, 0);
+			hr = cpVoice->Speak(wstrTo, SPF_ASYNC, 0);
 		else
-			cpVoice->Speak(wstrTo, SPF_DEFAULT, 0);
+			hr = cpVoice->Speak(wstrTo, SPF_DEFAULT, 0);
 	}
 }
 
@@ -136,42 +112,24 @@ bool CSpeechSynthesizer::SetVoice(std::string* name)
 
 	TCHAR lang[13] = { 0 };
 
-	// first, check m_voiceLangMap for this voice name and retrieve the correct language
-	for (std::map<std::string*, std::string*>::iterator it = m_voiceLangMap->begin(); it != m_voiceLangMap->end(); it++)
-	{
-		if (strcmp((*it).first->c_str(), name->c_str()) == 0)
-		{
-			const char* text = (*it).second->c_str();
-			int size_needed = MultiByteToWideChar(CP_UTF8, 0, &text[0], (int)strlen(text), NULL, 0);
-			MultiByteToWideChar(CP_UTF8, 0, &text[0], (int)strlen(text), &lang[0], size_needed);
-			break;
-		}
-	}
-	// now 
 	CComPtr<IEnumSpObjectTokens> cpIEnumeration;
 
-	// Enumerate voice tokens
-	HRESULT hr = SpEnumTokens(SPCAT_VOICES, lang, L"", &cpIEnumeration);
-	if (SUCCEEDED(hr))
+	for (std::map<std::string*, std::string*>::iterator mit = m_tokenMap->begin(); mit != m_tokenMap->end(); mit++)
 	{
-		unsigned long count = 0;
-		unsigned long fetched = 0;
-		cpIEnumeration->GetCount(&count);
-		for (unsigned long i = 0; i < count; i++)
+		if (strcmp((*mit).first->c_str(), name->c_str()) == 0)
 		{
+			// Enumerate voice tokens
+			const char* text = (*mit).second->c_str();
+			int size_needed = MultiByteToWideChar(CP_UTF8, 0, &text[0], (int)strlen(text), NULL, 0);
+			TCHAR tokenId[1024] = { 0 };
+			MultiByteToWideChar(CP_UTF8, 0, &text[0], (int)strlen(text), &tokenId[0], size_needed);
 			CComPtr<ISpObjectToken> cpTokenObj;
-			hr = cpIEnumeration->Next(1, &cpTokenObj, &fetched);
-
-			wchar_t* desc = new wchar_t[256];
-			SpGetDescription(cpTokenObj, &desc);
-			char desctext[256] = { 0 };
-			wcstombs(desctext, desc, 256);
-			std::string* voiceName = new std::string(desctext);
-			if (strcmp(voiceName->c_str(), name->c_str()) == 0)
+			HRESULT hr = SpGetTokenFromId(tokenId, &cpTokenObj, false);
+			if (SUCCEEDED(hr))
 			{
-				result = resetVoice(name);
-				break;
+				result = resetVoice((*mit).second);
 			}
+			break;
 		}
 	}
 
@@ -188,6 +146,55 @@ std::string CSpeechSynthesizer::GetVoice()
 	return voiceName;
 }
 
+void CSpeechSynthesizer::getVoicesInRegistry()
+{
+	HKEY currentKey;
+	TCHAR name[1024] = { 0 };
+	DWORD dwSize = 1024, dwIdx = 0;
+	long result;
+	result = RegOpenKeyEx(HKEY_LOCAL_MACHINE, _T("SOFTWARE\\Wow6432Node\\Microsoft\\Speech Server\\v11.0\\Voices\\Tokens"), 0, KEY_ENUMERATE_SUB_KEYS, &currentKey);
+
+	if (result != ERROR_SUCCESS)
+	{
+		// fail
+	}
+	else
+	{
+		DWORD index = 0;
+		std::string* regKeyName = new std::string("HKEY_LOCAL_MACHINE\\SOFTWARE\\Wow6432Node\\Microsoft\\Speech Server\\v11.0\\Voices\\Tokens");
+		while (ERROR_SUCCESS == RegEnumKeyEx(currentKey, index, name, &dwSize, NULL, NULL, NULL, NULL)) {
+			char keyname[1024] = { 0 };
+			wcstombs(keyname, name, 1024);
+			m_registryList->insert(std::pair<std::string*, std::string*>(new std::string(regKeyName->c_str()), new std::string(keyname)));
+			dwSize = 1024; // restore dwSize after is is set to key's length by RegEnumKeyEx
+			++index; // increment subkey index
+		}
+		delete(regKeyName);
+		regKeyName = nullptr;
+	}
+	//HKEY_LOCAL_MACHINE\SOFTWARE\\Wow6432Node\\Microsoft\\Speech\\Voices\\Tokens
+	result = RegOpenKeyEx(HKEY_LOCAL_MACHINE, _T("SOFTWARE\\Wow6432Node\\Microsoft\\Speech\\Voices\\Tokens"), 0, KEY_ENUMERATE_SUB_KEYS, &currentKey);
+
+	if (result != ERROR_SUCCESS)
+	{
+		// fail
+	}
+	else
+	{
+		DWORD index = 0;
+		std::string* regKeyName = new std::string("HKEY_LOCAL_MACHINE\\SOFTWARE\\Wow6432Node\\Microsoft\\Speech\\Voices\\Tokens");
+		while (ERROR_SUCCESS == RegEnumKeyEx(currentKey, index, name, &dwSize, NULL, NULL, NULL, NULL)) {
+			char keyname[1024] = { 0 };
+			wcstombs(keyname, name, 1024);
+			m_registryList->insert(std::pair<std::string*, std::string*>(new std::string(regKeyName->c_str()), new std::string(keyname)));
+			dwSize = 1024; // restore dwSize after is is set to key's length by RegEnumKeyEx
+			++index; // increment subkey index
+		}
+		delete(regKeyName);
+		regKeyName = nullptr;
+	}
+}
+
 std::list<std::string*>* CSpeechSynthesizer::GetAvailableVoices()
 {
 	std::list<std::string*>* namelist = new std::list<std::string*>();
@@ -195,39 +202,40 @@ std::list<std::string*>* CSpeechSynthesizer::GetAvailableVoices()
 	if (!m_initialized)
 		return namelist;
 
-	for (std::list<std::string*>::iterator it = m_langList->begin(); it != m_langList->end(); it++)
+	if (m_tokenMap->size() < 1)
 	{
-		CComPtr<IEnumSpObjectTokens> cpIEnumeration;
-		CoInitialize(cpIEnumeration);
-
-		// Enumerate voice tokens
-		const char* text = (*it)->c_str();
-		int size_needed = MultiByteToWideChar(CP_UTF8, 0, &text[0], (int)strlen(text), NULL, 0);
-		TCHAR lang[13] = { 0 };
-		MultiByteToWideChar(CP_UTF8, 0, &text[0], (int)strlen(text), &lang[0], size_needed);
-		HRESULT hr = SpEnumTokens(SPCAT_VOICES, lang, L"", &cpIEnumeration);
-		if (SUCCEEDED(hr))
+		for (std::map<std::string*, std::string*>::iterator mit = m_registryList->begin(); mit != m_registryList->end(); mit++)
 		{
-			unsigned long count = 0;
-			unsigned long fetched = 0;
-			cpIEnumeration->GetCount(&count);
-			for (unsigned long i = 0; i < count; i++)
+			std::string regToken = (*mit).first->c_str();
+			regToken.append("\\");
+			regToken.append((*mit).second->c_str());
+			// Enumerate voice tokens
+			const char* text = regToken.c_str();
+			int size_needed = MultiByteToWideChar(CP_UTF8, 0, &text[0], (int)strlen(text), NULL, 0);
+			TCHAR tokenId[1024] = { 0 };
+			MultiByteToWideChar(CP_UTF8, 0, &text[0], (int)strlen(text), &tokenId[0], size_needed);
+			CComPtr<ISpObjectToken> cpTokenObj;
+			HRESULT hr = SpGetTokenFromId(tokenId, &cpTokenObj, false);
+			if (SUCCEEDED(hr))
 			{
-				CComPtr<ISpObjectToken> cpTokenObj;
-				cpIEnumeration->Next(1, &cpTokenObj, &fetched);
 				wchar_t* desc = new wchar_t[256];
 				SpGetDescription(cpTokenObj, &desc);
 				char desctext[256] = { 0 };
 				wcstombs(desctext, desc, 256);
 				std::string* voiceName = new std::string(desctext);
 				namelist->push_back(voiceName);
-				m_voiceLangMap->insert(std::pair<std::string*, std::string*>(voiceName, (*it)));
-				if (cpTokenObj != NULL)
-					cpTokenObj.Release();
+				m_tokenMap->insert(std::pair<std::string*, std::string*>(voiceName, new std::string(regToken.c_str())));
 			}
+			if (cpTokenObj != NULL)
+				cpTokenObj.Release();
 		}
-		if (cpIEnumeration != NULL)
-			cpIEnumeration.Release();
+	}
+	else
+	{
+		for (std::map<std::string*, std::string*>::iterator mit = m_tokenMap->begin(); mit != m_tokenMap->end(); mit++)
+		{
+			namelist->push_back((*mit).first);
+		}
 	}
 
 	return namelist;
@@ -241,47 +249,31 @@ bool CSpeechSynthesizer::resetVoice(std::string* name)
 
 	CoInitialize(cpIEnum);
 
-	// Enumerate voice tokens that speak US English in a female voice.
-	HRESULT hr = SpEnumTokens(SPCAT_VOICES, L"", L"", &cpIEnum);
-
-	// Get the best matching token.
+	bool isServerVoice = name->find("Server");
+	// Create a voice and set its token to the one we just found.
+	const char* text = name->c_str();
+	int size_needed = MultiByteToWideChar(CP_UTF8, 0, &text[0], (int)strlen(text), NULL, 0);
+	TCHAR tokenId[1024] = { 0 };
+	MultiByteToWideChar(CP_UTF8, 0, &text[0], (int)strlen(text), &tokenId[0], size_needed);
+	HRESULT hr = SpGetTokenFromId(tokenId, &cpToken, false);
 	if (SUCCEEDED(hr))
 	{
-		unsigned long count = 0;
-		cpIEnum->GetCount(&count);
-		for (unsigned long i = 0; i < count; i++) 
-		{
-			if (cpToken != NULL)
-				cpToken.Release();
-			hr = cpIEnum->Next(1, &cpToken, NULL);
+		if (isServerVoice)
+			hr = CoCreateInstance(CLSID_SpVoice, NULL, CLSCTX_INPROC_SERVER, IID_ISpVoice, (void**)&cpVoice);
+		else
+			hr = cpVoice.CoCreateInstance(CLSID_SpVoice);
+	}
 
-			wchar_t* desc = new wchar_t[256];
-			SpGetDescription(cpToken, &desc);
-			char desctext[256] = { 0 };
-			wcstombs(desctext, desc, 256);
-			std::string* voiceName = new std::string(desctext);
-			if (strcmp(voiceName->c_str(), name->c_str()) == 0)
-			{
-				// Create a voice and set its token to the one we just found.
-				if (SUCCEEDED(hr))
-				{
-					hr = cpVoice.CoCreateInstance(CLSID_SpVoice);
-				}
+	// Set the voice.
+	if (SUCCEEDED(hr))
+	{
+		hr = cpVoice->SetVoice(cpToken);
+	}
 
-				// Set the voice.
-				if (SUCCEEDED(hr))
-				{
-					hr = cpVoice->SetVoice(cpToken);
-				}
-
-				// Set the output to the default audio device.
-				if (SUCCEEDED(hr))
-				{
-					hr = cpVoice->SetOutput(NULL, TRUE);
-				}
-				break;
-			}
-		}
+	// Set the output to the default audio device.
+	if (SUCCEEDED(hr))
+	{
+		hr = cpVoice->SetOutput(NULL, TRUE);
 	}
 
 	return SUCCEEDED(hr);

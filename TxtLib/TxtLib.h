@@ -41,10 +41,11 @@ private:
 	CComPtr<ISpVoice> cpVoice;
 	bool m_initialized;
 #endif
-	std::list<std::string*>* m_langList;
-	std::map<std::string*, std::string*>* m_voiceLangMap;
+	std::map<std::string*, std::string*>* m_registryList;
+	std::map<std::string*, std::string*>* m_tokenMap;
 
 	bool resetVoice(std::string* name);
+	void getVoicesInRegistry();
 public:
 	CSpeechSynthesizer();
 	~CSpeechSynthesizer();
